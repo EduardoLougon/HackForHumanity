@@ -1,0 +1,26 @@
+timezone: America/Los_Angeles
+bucket_minutes: 15
+max_session_hours: 12
+merge_gap_minutes: 2
+capacity_percentile: 95
+enforced_min_date_share: 0.5
+profile_window_weeks: 26
+recency_half_life_weeks: 8
+min_dates_pole: 6
+inactive_days: 14
+unpaid_occupancy_uplift: 0.0
+bands:
+  likely: 0.6
+  possible: 0.3
+search:
+  default_radius_m: 400
+  max_radius_m: 2000
+  default_max_results: 10
+  distance_decay_m: 250
+  walk_speed_m_per_min: 80
+bounds:
+  min_lat: 32.5
+  max_lat: 33.3
+  min_lon: -117.6
+  max_lon: -116.8
+

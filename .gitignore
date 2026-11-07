@@ -5,7 +5,10 @@
 .env
 
 # Data artifacts
-data/
+data/raw/
+data/clean/
+!data/serving/
+!data/serving/parking.duckdb
 reports/
 
 # Python cache
@@ -19,3 +22,4 @@ __pycache__/
 # OS files
 .DS_Store
 Thumbs.db
+

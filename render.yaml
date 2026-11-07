@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: san-diego-parking-backend
+    env: docker
+    plan: starter
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: GEOCODER_PROVIDER
+        value: nominatim
+      - key: CORS_ORIGINS
+        value: "*"
+

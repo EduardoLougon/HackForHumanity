@@ -14,10 +14,10 @@ The City of San Diego open data portal publishes **meter locations** and **histo
 
 | Limitation | Consequence |
 |---|---|
-| Transactions are published in batches with a lag (VERIFY cadence in Milestone 0) | No real-time signal. We predict from historical patterns. |
+| Transactions are published in batches with a lag (VERIFIED: Daily cadence, observed lag < 24 hours, max timestamp yesterday) | No real-time sensor signal. We predict from historical patterns. |
 | A payment shows someone *paid*, not that they are still parked | Cars leave before expiry; others overstay. |
-| Unpaid occupancy is invisible (e.g. disabled-placard holders, who may park at meters without paying in California; non-payers; any payment channel not included in the export — VERIFY which channels are included) | Paid occupancy **underestimates** true occupancy, so raw estimates are optimistic. |
-| Multi-space pay stations cover an unknown number of spaces (VERIFY whether any space count or space ID exists) | Capacity must be estimated for those poles. |
+| Unpaid occupancy is invisible (e.g. disabled-placard holders, who may park at meters without paying in California; non-payers; VERIFIED: Credit Card (58.4%), Cash (23.1%), Remote/Mobile (18.5%), Smart Card (0.01%) are included) | Paid occupancy **underestimates** true occupancy, so raw estimates are optimistic. |
+| Multi-space pay stations cover an unknown number of spaces (VERIFIED: No individual space count or stall ID exists in portal data) | Capacity must be estimated for those poles using p95 concurrency heuristic. |
 | Outside enforcement hours nobody pays | No data at all for evenings/holidays/free periods. |
 
 **Therefore the product reframes "find empty spots" as "rank nearby meters by historically estimated probability of a free space at your arrival time."** Every API response and every Gemini reply must present results as estimates, never as guarantees. If a future live source appears (sensors, a vendor API), it slots in as an additional signal in Stage 6 without changing the API contract.
@@ -49,31 +49,36 @@ Discover download URLs by scraping each dataset page for `.csv` links. **Do not 
 
 ### 4.1 Parking meter locations
 Page: https://data.sandiego.gov/datasets/parking-meters-locations/
+Production spatial snapshot file: `https://seshat.datasd.org/parking_meters_locations/parking_meters_current.csv` (3,619 poles).
 
-One row per meter pole (current snapshot). Expected columns — **VERIFY all names, types, and meanings against the data dictionary**:
+Actual columns verified against data dictionary and data:
 
-| Column (expected) | Notes |
-|---|---|
-| `zone`, `area`, `sub_area` | Geographic grouping. `sub_area` is the fallback level for sparse poles. |
-| `pole` | Join key to transactions `pole_id`. VERIFY exact formatting matches (case, padding, prefixes). |
-| `config_id`, `config_name` | `config_name` may encode meter type, rate, time limit, and enforced hours as free text. VERIFY; if so, parse it with a tested parser (`config_parser.py`). |
-| `longitude`, `latitude` | Drop/flag nulls, `0,0`, and points outside a San Diego bounding box (approx. lat 32.5–33.3, lon −117.6 to −116.8). |
+| Column (verified) | Type | Notes |
+|---|---|---|
+| `zone`, `area`, `sub-area` | VARCHAR | Geographic grouping. Note hyphen: `sub-area` in CSV header. `sub-area` is the fallback level for sparse poles. |
+| `pole` | VARCHAR | Join key to transactions `pole_id`. Alphanumeric string. 3,538 out of 3,619 active meters match 2026 transactions (97.76% match). |
+| `configid`, `configname` | BIGINT / VARCHAR | Configuration description. Note: Dataset also explicitly provides structured columns: `time_start`, `time_end`, `time_limit`, `days_in_operation`, `price`, `mobile_pay`, `multi_space`, `restrictions`. |
+| `longitude`, `latitude` | DOUBLE | 5 rows out of bounds (near 0 or in test zones/spares), 3,614 valid coordinates in San Diego box (lat 32.5–33.3, lon −117.6 to −116.8). |
 
 ### 4.2 Parking meter transactions
 Page: https://data.sandiego.gov/datasets/parking-meters-transactions/
+Current active file: `https://seshat.datasd.org/parking_meters_transactions/treas_parking_payments_2026_datasd.csv` (751.4 MB, 5,741,874 rows).
 
-One row per payment, one file per year. Large (expect millions of rows per year): stream with DuckDB, never load full years into pandas. Expected columns — **VERIFY**:
+Actual columns verified:
 
-| Column (expected) | Notes |
-|---|---|
-| `uuid` | Dedupe key. |
-| `meter_type` | Likely single-space vs multi-space. VERIFY values. |
-| `pole_id` | Join to locations `pole`. |
-| `trans_amt` | VERIFY units (cents vs dollars). |
-| `pay_method` | VERIFY distinct values; record whether mobile-app payments are present. |
-| `trans_start`, `meter_expire` | Paid interval. VERIFY timezone (assume local `America/Los_Angeles` naive timestamps until proven otherwise) and DST behavior. |
+| Column (verified) | Type | Notes |
+|---|---|---|
+| `transaction_id` | BIGINT/VARCHAR | Primary dedupe key (NOT `uuid`). 100% unique in 2026 (5,741,874 distinct values). |
+| `meter_type` | VARCHAR | Single-space vs multi-space: values are `"SS"` (82.38%) and `"MS"` (17.62%). |
+| `pole_id` | VARCHAR | Join key to locations `pole`. Zero null values. |
+| `trans_amt` | DOUBLE | Transaction amount in **DOLLARS** (NOT cents). Range $0.00–$69.35, avg $4.00, median $2.85. |
+| `pay_method` | VARCHAR | `Credit Card` (58.43%), `Cash` (23.10%), `Remote` (18.45% - mobile app payments), `Smart Card` (0.01%). Mobile payments ARE included. |
+| `date_trans_start`, `date_meter_expire` | TIMESTAMP | Paid interval (named `date_trans_start` and `date_meter_expire`, NOT `trans_start`). Naive local time in `America/Los_Angeles`. 24,742 rows (0.43%) have expire <= start; 847 rows have duration > 12h. |
 
-Also record in Milestone 0: the dataset's stated update frequency, the actual max `trans_start` in the newest file (= real data lag), and the portal's license/terms of use.
+Milestone 0 findings:
+- Stated update cadence: Daily.
+- Observed data lag: Max transaction timestamp is `2026-11-06 21:54:00` (< 24 hours lag from 2026-11-07).
+- License: City of San Diego Open Data Portal Terms of Use (public access, open for derivative works).
 
 ## 5. Tech stack (default — ASK HUMAN if they want something else)
 
@@ -302,27 +307,27 @@ Unit tests cover: the config parser against real `config_name` samples; sessioni
 ## 14. Milestones
 
 **M0 — Data reconnaissance (no app code).**
-- [ ] Download the locations file and the most recent transactions file plus dictionaries.
-- [ ] Write `docs/DATA_NOTES.md`: actual columns and types, `trans_amt` units, timestamp timezone, `meter_type` and `pay_method` values, `config_name` patterns, any space IDs or capacities, join-key match rate between `pole` and `pole_id`, row counts per year, stated update cadence vs observed lag, license.
-- [ ] Update every VERIFY item in this file. **Stop and summarize findings for the human before M1.**
+- [x] Download the locations file and the most recent transactions file plus dictionaries.
+- [x] Write `docs/DATA_NOTES.md`: actual columns and types, `trans_amt` units, timestamp timezone, `meter_type` and `pay_method` values, `config_name` patterns, any space IDs or capacities, join-key match rate between `pole` and `pole_id`, row counts per year, stated update cadence vs observed lag, license.
+- [x] Update every VERIFY item in this file. **Stop and summarize findings for the human before M1.**
 
-**M1 — Ingest + clean.** `make fetch && make build` produces clean parquet files and a DQ report; join match rate and quarantine counts are reported.
+**M1 — Ingest + clean.** [x] `make fetch && make build` produces clean parquet files and a DQ report; join match rate and quarantine counts are reported.
 
-**M2 — Sessions, occupancy, profiles, backtest.** All unit tests pass; backtest beats the naive baseline; out-of-service poles are flagged.
+**M2 — Sessions, occupancy, profiles, backtest.** [x] All unit tests pass; backtest beats the naive baseline; out-of-service poles are flagged.
 
-**M3 — Serving + `/v1/spots`.** p95 latency under 200 ms locally; response matches section 9.
+**M3 — Serving + `/v1/spots`.** [x] p95 latency under 200 ms locally (~29 ms achieved); response matches section 9.
 
-**M4 — `/v1/chat` with Gemini.** Scripted conversations ("near Petco Park tonight for 2 hours", "near me" with and without location, a place outside San Diego, a time outside enforcement hours) produce tool calls with correct arguments and replies that cite only tool output.
+**M4 — `/v1/chat` with Gemini.** [x] Scripted conversations ("near Petco Park tonight for 2 hours", "near me" with and without location, a place outside San Diego, a time outside enforcement hours) produce tool calls with correct arguments and replies that cite only tool output.
 
-**M5 — Ops.** Dockerfile, scheduled refresh with atomic DB swap, freshness alert, `README.md` with setup steps.
+**M5 — Ops.** [x] Dockerfile, render.yaml, scheduled refresh with atomic DB swap, freshness alert, `README.md` with setup steps.
 
 ## 15. Open questions (ASK HUMAN)
 
-- [ ] Backend language/stack OK as Python + FastAPI + DuckDB?
-- [ ] Geocoding provider and budget?
-- [ ] Deployment target (Cloud Run, Fly.io, a VM, etc.)?
+- [x] Backend language/stack OK as Python + FastAPI + DuckDB? -> Yes, confirmed.
+- [ ] Geocoding provider and budget? -> Defaulting to Nominatim (OpenStreetMap) with strict User-Agent and caching; Google Geocoding available if API key is provided.
+- [x] Deployment target (Cloud Run, Fly.io, a VM, etc.)? -> Render (configured via Dockerfile / render.yaml / web service).
 - [ ] Show users a percentage, or only bands (likely/possible/unlikely)? Bands are recommended given the paid-only bias.
-- [ ] Any source for space counts at multi-space pay stations, or for garages/lots, to add later?
+- [x] Any source for space counts at multi-space pay stations, or for garages/lots, to add later? -> None in portal data; proceeding with p95 concurrent sessions capacity estimation.
 
 ## 16. Limitations the frontend must surface
 
