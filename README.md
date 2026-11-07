@@ -4,8 +4,10 @@ Backend service and data pipeline for San Diego parking meter availability predi
 
 ### Running M4 chat
 
-Copy `.env.example` to `.env`. Set the Gemini key and model, a server-side key
-with Google's Geocoding API enabled, and the exact frontend origin. Point
+Copy `.env.example` to `.env`. Set the Gemini key, model and frontend origin. Named places use the keyless
+[Nominatim search API](https://nominatim.org/release-docs/latest/api/Search/) with
+[OpenStreetMap contributors](https://www.openstreetmap.org/copyright) data.
+Use one chat worker and one replica with the public endpoint. Its [usage policy](https://operations.osmfoundation.org/policies/nominatim/) limits the entire app to one request per second and prohibits autocomplete. Submit only user-requested, non-confidential destinations. The backend caches lookups, identifies the app, and includes attribution in replies. Set `NOMINATIM_SEARCH_URL` to your own search endpoint for multi-worker deployments. Point
 `PARKING_API_BASE_URL` at the M3 service providing `GET /v1/spots` and
 `GET /v1/meters/{pole_id}`. Those routes are still under development.
 

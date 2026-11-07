@@ -1,3 +1,4 @@
+import time
 from threading import Lock
 
 import httpx
@@ -10,44 +11,55 @@ class ServiceUnavailable(Exception):
     pass
 
 
-class GoogleGeocoder:
-    def __init__(self, client: httpx.Client, key: str):
+class NominatimGeocoder:
+    def __init__(
+        self,
+        client: httpx.Client,
+        endpoint: str = "https://nominatim.openstreetmap.org/search",
+    ):
         self.client = client
-        self.key = key
+        self.endpoint = endpoint
         self.cache = TTLCache(maxsize=512, ttl=3600)
         self.lock = Lock()
+        self.next_request = 0.0
 
     def lookup(self, query: str) -> Coordinates | None:
         query = query.strip()
         with self.lock:
             if query.casefold() in self.cache:
                 return self.cache[query.casefold()]
-        if not self.key:
-            raise ServiceUnavailable("Google Geocoding is unconfigured.")
-        response = self.client.get(
-            "https://maps.googleapis.com/maps/api/geocode/json",
-            params={
-                "address": query,
-                "bounds": "32.5,-117.6|33.3,-116.8",
-                "key": self.key,
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
-        point = None
-        if data["status"] == "OK":
-            for result in data["results"]:
-                city = any(
-                    "locality" in component["types"]
-                    and component["long_name"] == "San Diego"
-                    for component in result["address_components"]
-                )
-                if city and not result.get("partial_match"):
-                    location = result["geometry"]["location"]
-                    point = Coordinates(lat=location["lat"], lon=location["lng"])
+            delay = self.next_request - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
+            self.next_request = time.monotonic() + 1.0
+            response = self.client.get(
+                self.endpoint,
+                headers={
+                    "User-Agent": "HackForHumanity-Parking/0.1 (+https://github.com/EduardoLougon/HackForHumanity)"
+                },
+                params={
+                    "q": query,
+                    "viewbox": "-117.6,33.3,-116.8,32.5",
+                    "bounded": 1,
+                    "countrycodes": "us",
+                    "format": "geocodejson",
+                    "addressdetails": 1,
+                    "limit": 5,
+                    "accept-language": "en",
+                },
+            )
+            response.raise_for_status()
+            try:
+                features = response.json()["features"]
+                point = None
+                for feature in features:
+                    props = feature["properties"]["geocoding"]
+                    if props.get("city") != "San Diego":
+                        continue
+                    lon, lat = feature["geometry"]["coordinates"]
+                    point = Coordinates(lat=lat, lon=lon)
                     break
-        elif data["status"] != "ZERO_RESULTS":
-            raise ServiceUnavailable("Google Geocoding is unavailable.")
-        with self.lock:
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ServiceUnavailable("Invalid response from place search.") from exc
             self.cache[query.casefold()] = point
-        return point
+            return point

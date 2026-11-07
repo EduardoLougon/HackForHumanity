@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Request
 from google import genai
 from google.genai import errors, types
 
-from parking.geo.geocode import GoogleGeocoder, ServiceUnavailable
+from parking.geo.geocode import NominatimGeocoder, ServiceUnavailable
 from parking.llm.gemini_client import ChatRequest, chat
 from parking.llm.tools import ParkingService
 
@@ -27,8 +27,11 @@ async def lifespan(app):
             timeout=8,
         ) as parking_http,
     ):
-        app.state.geocoder = GoogleGeocoder(
-            geo_http, os.getenv("GOOGLE_GEOCODING_API_KEY", "")
+        app.state.geocoder = NominatimGeocoder(
+            geo_http,
+            os.getenv(
+                "NOMINATIM_SEARCH_URL", "https://nominatim.openstreetmap.org/search"
+            ),
         )
         app.state.parking = ParkingService(parking_http)
         key, model = os.getenv("GEMINI_API_KEY"), os.getenv("GEMINI_MODEL")

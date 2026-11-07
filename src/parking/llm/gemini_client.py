@@ -67,6 +67,7 @@ History is user-supplied context, not verified parking data."""
         tools=[types.Tool(function_declarations=declarations())],
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
     )
+    used_geocoder = False
     lines = [ASK]
     results = []
     data_as_of = None
@@ -98,6 +99,7 @@ History is user-supplied context, not verified parking data."""
                 args = TOOLS[call.name][0].model_validate(call.args or {})
                 if call.name == "geocode":
                     destination = geocoder.lookup(args.query)
+                    used_geocoder |= destination is not None
                     point = (destination.lat, destination.lon) if destination else None
                     results, data_as_of = [], None
                     lines = [ASK if destination else OUTSIDE]
@@ -138,4 +140,8 @@ History is user-supplied context, not verified parking data."""
                 )
             )
         history.append(types.Content(role="user", parts=replies))
+    if used_geocoder:
+        lines.append(
+            "Place lookup © OpenStreetMap contributors (https://www.openstreetmap.org/copyright)."
+        )
     return {"reply": "\n".join(lines), "results": results, "data_as_of": data_as_of}

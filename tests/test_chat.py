@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from google.genai import types
 
 from parking.api.main import app
-from parking.geo.geocode import GoogleGeocoder
+from parking.geo.geocode import NominatimGeocoder
 from parking.llm.gemini_client import ASK, HISTORICAL, OUTSIDE
 from parking.llm.tools import Coordinates, ParkingService
 
@@ -132,25 +132,28 @@ def test_geocoder_filters_and_caches(city, found):
 
     def geocode(request):
         requests.append(request)
+        assert request.url.params["q"] == "Petco Park"
+        assert request.url.params["format"] == "geocodejson"
+        assert request.url.params["bounded"] == "1"
+        assert "HackForHumanity" in request.headers["User-Agent"]
+        assert "key" not in request.url.params
         return httpx.Response(
             200,
             json={
-                "status": "OK",
-                "results": [
+                "features": [
                     {
-                        "address_components": [
-                            {"long_name": city, "types": ["locality"]}
-                        ],
+                        "properties": {"geocoding": {"city": city}},
                         "geometry": {
-                            "location": {"lat": POINT["lat"], "lng": POINT["lon"]}
+                            "type": "Point",
+                            "coordinates": [POINT["lon"], POINT["lat"]],
                         },
                     }
-                ],
+                ]
             },
         )
 
     with httpx.Client(transport=httpx.MockTransport(geocode)) as http:
-        geo = GoogleGeocoder(http, "test-key")
+        geo = NominatimGeocoder(http)
         assert bool(geo.lookup("Petco Park")) == found
         assert bool(geo.lookup("petco park")) == found
     assert len(requests) == 1
