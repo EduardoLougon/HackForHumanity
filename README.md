@@ -145,3 +145,7 @@ The repository is configured for one-click or Git-connected deployment on **Rend
 5. Click **Apply**. Render will build the Docker container and deploy the web service.
 
 Alternatively, create a **Web Service** on Render selecting **Docker** runtime, setting the health check path to `/health`.
+
+## How we used GitHub Copilot
+
+We used GitHub Copilot as a coding assistant while building our parking web app. It helped us draft and refine the code that connects a destination search to the parking map and results list. We tested that flow in the browser by dropping a pin, entering a different destination in chat, and checking that both the pin and the nearby parking options moved to the new location.
