@@ -50,3 +50,7 @@ For “near me”, include `user_location` with numeric `lat` and `lon`.
 The response contains `reply`, the full ranked `results` for map pins, and
 `data_as_of` from M3. Tests use scripted Gemini responses and local fixtures
 and run without credentials or a serving database.
+
+## How we used GitHub Copilot
+
+We used GitHub Copilot as a coding assistant while building our parking web app. It helped us draft and refine the code that connects a destination search to the parking map and results list. We tested that flow in the browser by dropping a pin, entering a different destination in chat, and checking that both the pin and the nearby parking options moved to the new location.
