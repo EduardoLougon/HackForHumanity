@@ -13,6 +13,20 @@ from google.genai import errors, types
 from parking.geo.geocode import NominatimGeocoder, ServiceUnavailable
 from parking.llm.gemini_client import ChatRequest, chat
 from parking.llm.tools import ParkingService
+from parking.serve.availability import find_parking
+
+
+class LocalParkingService:
+    def __init__(self, store):
+        self.store = store
+
+    def search(self, query):
+        return find_parking(self.store, query)
+
+    def details(self, meter):
+        if meter.pole_id not in self.store.by_id:
+            raise ValueError("Unknown meter ID")
+        return self.store.details(meter.pole_id)
 
 
 @asynccontextmanager
@@ -33,7 +47,11 @@ async def lifespan(app):
                 "NOMINATIM_SEARCH_URL", "https://nominatim.openstreetmap.org/search"
             ),
         )
-        app.state.parking = ParkingService(parking_http)
+        app.state.parking = (
+            LocalParkingService(app.state.store)
+            if app.state.store is not None
+            else ParkingService(parking_http)
+        )
         key, model = os.getenv("GEMINI_API_KEY"), os.getenv("GEMINI_MODEL")
         app.state.generate = None
         if key and model:

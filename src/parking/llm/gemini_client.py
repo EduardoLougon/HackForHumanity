@@ -35,6 +35,8 @@ def describe(result):
     walk = f"{result['distance_m']} m away (about {result['walk_minutes']} minutes on foot)"
     if result["status"] == "unmetered_now":
         estimate = "meters are unenforced then, so parking is likely free and occupancy is unknown"
+    elif result["availability"]["band"] is None:
+        estimate = "availability is unknown for this time"
     else:
         avail = result["availability"]
         estimate = f"{avail['band']} availability, {avail['confidence']} confidence"
